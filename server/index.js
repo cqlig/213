@@ -5,6 +5,8 @@ const qrcode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
 const path = require('path');
+const fs = require('fs');
+const { execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,8 +15,20 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Verificar si existe el build de React, si no, construirlo
+const buildPath = path.join(__dirname, '../client/build');
+if (!fs.existsSync(buildPath)) {
+  console.log('🔨 Build de React no encontrado. Construyendo...');
+  try {
+    execSync('cd client && npm run build', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
+    console.log('✅ Build completado exitosamente');
+  } catch (error) {
+    console.error('❌ Error al construir React:', error.message);
+  }
+}
+
 // Servir archivos estáticos del build de React
-app.use(express.static(path.join(__dirname, '../client/build')));
+app.use(express.static(buildPath));
 
 // Inicializar base de datos SQLite
 const db = new sqlite3.Database('./tickets.db', (err) => {
