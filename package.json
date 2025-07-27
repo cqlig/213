@@ -4,6 +4,7 @@
   "description": "Sistema de gestión de entradas manuales",
   "main": "server/index.js",
   "scripts": {
+    "start": "node index.js",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && npm run dev",
     "client": "cd client && npm start",
