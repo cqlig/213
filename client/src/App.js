@@ -7,7 +7,7 @@ import TicketScanner from './components/TicketScanner';
 import TicketViewer from './components/TicketViewer';
 
 // API base URL
-axios.defaults.baseURL = 'http://localhost:5000';
+axios.defaults.baseURL = window.location.origin;
 
 function Navigation() {
   const location = useLocation();
@@ -65,4 +65,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;

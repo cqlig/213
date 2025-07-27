@@ -166,5 +166,6 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🎫 Servidor corriendo en puerto ${PORT}`);
-  console.log(`📱 Aplicación disponible en: http://localhost:${PORT}`);
+  console.log(`📱 Aplicación disponible en: http://0.0.0.0:${PORT}`);
+  console.log(`🌐 También disponible en: https://${process.env.REPL_SLUG || 'tu-repl'}.${process.env.REPL_OWNER || 'usuario'}.repl.co`);
 });
