@@ -17,18 +17,26 @@ app.use(express.json());
 
 // Verificar si existe el build de React, si no, construirlo
 const buildPath = path.join(__dirname, '../client/build');
-if (!fs.existsSync(buildPath)) {
+const indexPath = path.join(buildPath, 'index.html');
+
+if (!fs.existsSync(buildPath) || !fs.existsSync(indexPath)) {
   console.log('🔨 Build de React no encontrado. Construyendo...');
   try {
     execSync('cd client && npm run build', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
     console.log('✅ Build completado exitosamente');
   } catch (error) {
     console.error('❌ Error al construir React:', error.message);
+    console.log('⚠️ Usando servidor sin archivos estáticos de React');
   }
 }
 
-// Servir archivos estáticos del build de React
-app.use(express.static(buildPath));
+// Servir archivos estáticos del build de React solo si existe
+if (fs.existsSync(buildPath) && fs.existsSync(indexPath)) {
+  app.use(express.static(buildPath));
+  console.log('📁 Sirviendo archivos estáticos desde:', buildPath);
+} else {
+  console.log('⚠️ No se encontraron archivos de build de React');
+}
 
 // Inicializar base de datos SQLite
 const db = new sqlite3.Database('./tickets.db', (err) => {
@@ -175,7 +183,16 @@ app.delete('/api/tickets/:id', (req, res) => {
 
 // Servir React app para todas las rutas que no sean API
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
+  const indexPath = path.join(__dirname, '../client/build', 'index.html');
+  
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ 
+      error: 'Frontend no disponible', 
+      message: 'El build de React no se encontró. Ejecuta "npm run build" en el directorio client.' 
+    });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
