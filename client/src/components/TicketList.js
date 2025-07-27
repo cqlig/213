@@ -1,0 +1,433 @@
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import axios from 'axios';
+import QRCode from 'qrcode.react';
+import html2canvas from 'html2canvas';
+
+
+const TicketList = () => {
+  const [tickets, setTickets] = useState([]);
+  const [filteredTickets, setFilteredTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'valid', 'redeemed'
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+
+  useEffect(() => {
+    fetchTickets();
+  }, []);
+
+  const fetchTickets = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get('/api/tickets');
+      setTickets(response.data);
+      setFilteredTickets(response.data);
+    } catch (err) {
+      setError('Error al cargar las entradas');
+      console.error('Error fetching tickets:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para filtrar tickets
+  useEffect(() => {
+    let filtered = tickets;
+    
+    // Filtrar por texto de búsqueda
+    if (searchTerm.trim() !== '') {
+      filtered = filtered.filter(ticket => 
+        ticket.buyer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.event_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.buyer_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.id.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Filtrar por estado
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'valid') {
+        filtered = filtered.filter(ticket => ticket.status === 'Válido');
+      } else if (statusFilter === 'redeemed') {
+        filtered = filtered.filter(ticket => ticket.status === 'Canjeado');
+      }
+    }
+    
+    setFilteredTickets(filtered);
+  }, [searchTerm, tickets, statusFilter]);
+
+
+
+  // Función para eliminar ticket
+  const deleteTicket = async (ticketId) => {
+    try {
+      await axios.delete(`/api/tickets/${ticketId}`);
+      // Actualizar la lista local
+      setTickets(prevTickets => prevTickets.filter(ticket => ticket.id !== ticketId));
+      setShowDeleteConfirm(null);
+    } catch (error) {
+      console.error('Error deleting ticket:', error);
+      alert('Error al eliminar el ticket');
+    }
+  };
+
+  const downloadQROnly = async (ticket) => {
+    try {
+      // Crear un div temporal con el QR
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '-9999px';
+      tempDiv.style.backgroundColor = '#ffffff';
+      tempDiv.style.padding = '40px';
+      tempDiv.style.width = '400px';
+      tempDiv.style.height = '400px';
+      tempDiv.style.display = 'flex';
+      tempDiv.style.alignItems = 'center';
+      tempDiv.style.justifyContent = 'center';
+      
+      document.body.appendChild(tempDiv);
+      
+      // Crear el QR en el div temporal
+      const qrContainer = document.createElement('div');
+      tempDiv.appendChild(qrContainer);
+      
+      // Usar QRCode.react para renderizar el QR
+      const { default: QRCodeReact } = await import('qrcode.react');
+      const qrElement = document.createElement('div');
+      qrContainer.appendChild(qrElement);
+      
+      // Renderizar el QR usando React
+      const React = await import('react');
+      const ReactDOM = await import('react-dom');
+      
+      ReactDOM.render(
+        React.createElement(QRCodeReact, {
+          value: ticket.id,
+          size: 320,
+          level: 'H',
+          includeMargin: true,
+          bgColor: '#ffffff',
+          fgColor: '#000000'
+        }),
+        qrElement
+      );
+      
+      // Esperar un momento para que se renderice
+      setTimeout(async () => {
+        try {
+          // Capturar el QR con html2canvas
+          const canvas = await html2canvas(qrContainer, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            width: 400,
+            height: 400
+          });
+          
+          // Descargar la imagen
+          const link = document.createElement('a');
+          link.download = `QR-${ticket.buyer_name.replace(/\s+/g, '_')}-${ticket.event_name.replace(/\s+/g, '_')}.png`;
+          link.href = canvas.toDataURL('image/png', 1.0);
+          link.click();
+          
+          // Limpiar el div temporal
+          document.body.removeChild(tempDiv);
+        } catch (error) {
+          console.error('Error capturing QR:', error);
+          document.body.removeChild(tempDiv);
+          alert('Error al capturar el QR. Por favor intenta nuevamente.');
+        }
+      }, 200);
+      
+    } catch (error) {
+      console.error('Error downloading QR:', error);
+      alert('Error al descargar el QR. Por favor intenta nuevamente.');
+    }
+  };
+
+  const getStatusBadgeClass = (status) => {
+    return status === 'Válido' ? 'status-valid' : 'status-redeemed';
+  };
+
+  if (loading) {
+    return (
+      <div className="form-container">
+        <h2>Lista de Entradas</h2>
+        <p>Cargando entradas...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="form-container">
+        <h2>Lista de Entradas</h2>
+        <div className="result-message result-error">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="form-container">
+        <h2>📋 Lista de Entradas ({filteredTickets.length} de {tickets.length})</h2>
+        
+        {/* Buscador y Filtros */}
+        <div style={{ marginBottom: '30px' }}>
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label htmlFor="search">🔍 Buscar Entradas</label>
+            <input
+              type="text"
+              id="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por nombre, evento, correo o ID..."
+              className="scanner-input"
+              style={{ marginBottom: '0' }}
+            />
+          </div>
+          
+          {/* Filtros por Estado */}
+          <div className="form-group">
+            <label>📊 Filtrar por Estado</label>
+            <div className="filter-buttons" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
+              <button 
+                onClick={() => setStatusFilter('all')}
+                className={`nav-button ${statusFilter === 'all' ? 'active' : ''}`}
+                style={{ 
+                  background: statusFilter === 'all' ? 'var(--primary-gradient)' : 'rgba(255, 255, 255, 0.2)',
+                  minWidth: 'fit-content',
+                  padding: '12px 20px'
+                }}
+              >
+                📋 Todos ({tickets.length})
+              </button>
+              <button 
+                onClick={() => setStatusFilter('valid')}
+                className={`nav-button ${statusFilter === 'valid' ? 'active' : ''}`}
+                style={{ 
+                  background: statusFilter === 'valid' ? 'var(--success-gradient)' : 'rgba(255, 255, 255, 0.2)',
+                  minWidth: 'fit-content',
+                  padding: '12px 20px'
+                }}
+              >
+                ✅ Válidos ({tickets.filter(t => t.status === 'Válido').length})
+              </button>
+              <button 
+                onClick={() => setStatusFilter('redeemed')}
+                className={`nav-button ${statusFilter === 'redeemed' ? 'active' : ''}`}
+                style={{ 
+                  background: statusFilter === 'redeemed' ? 'var(--danger-gradient)' : 'rgba(255, 255, 255, 0.2)',
+                  minWidth: 'fit-content',
+                  padding: '12px 20px'
+                }}
+              >
+                🎫 Canjeados ({tickets.filter(t => t.status === 'Canjeado').length})
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        {tickets.length === 0 ? (
+          <p>No hay entradas creadas aún. <Link to="/">Crea la primera entrada</Link></p>
+        ) : filteredTickets.length === 0 ? (
+          <p>No se encontraron entradas que coincidan con tu búsqueda.</p>
+        ) : (
+          <div className="tickets-list">
+            {filteredTickets.map((ticket) => (
+              <div key={ticket.id} className="ticket-card">
+                <h3>{ticket.buyer_name}</h3>
+                <p><strong>Evento:</strong> {ticket.event_name}</p>
+                {ticket.buyer_email && (
+                  <p><strong>Correo:</strong> {ticket.buyer_email}</p>
+                )}
+                <p><strong>ID:</strong> {ticket.id}</p>
+                <p><strong>Creado:</strong> {new Date(ticket.created_at).toLocaleString('es-ES')}</p>
+                <p>
+                  <strong>Estado:</strong>{' '}
+                  <span className={`status-badge ${getStatusBadgeClass(ticket.status)}`}>
+                    {ticket.status}
+                  </span>
+                </p>
+                
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '15px' }}>
+                  <Link to={`/ticket/${ticket.id}`} className="nav-button" style={{ background: 'var(--primary-gradient)', flex: '1', minWidth: '120px' }}>
+                    👁️ Ver Detalles
+                  </Link>
+                  <button 
+                    onClick={() => setSelectedTicket(ticket)}
+                    className="nav-button"
+                    style={{ background: 'var(--success-gradient)', flex: '1', minWidth: '120px' }}
+                  >
+                    📄 Descargar
+                  </button>
+                  <button 
+                    onClick={() => setShowDeleteConfirm(ticket)}
+                    className="nav-button"
+                    style={{ background: 'var(--danger-gradient)', minWidth: '100px' }}
+                    title="Eliminar ticket"
+                  >
+                    🗑️ Eliminar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal para descargar ticket */}
+      {selectedTicket && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'white',
+            padding: '30px',
+            borderRadius: '20px',
+            maxWidth: '500px',
+            width: '100%',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>📄 Descargar Entrada</h3>
+            
+            <div id={`ticket-${selectedTicket.id}`} style={{ marginBottom: '20px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <h4>🎫 {selectedTicket.event_name}</h4>
+                <p><strong>Comprador:</strong> {selectedTicket.buyer_name}</p>
+                {selectedTicket.buyer_email && (
+                  <p><strong>Correo:</strong> {selectedTicket.buyer_email}</p>
+                )}
+                <p><strong>ID:</strong> {selectedTicket.id}</p>
+                <p><strong>Estado:</strong> {selectedTicket.status}</p>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <QRCode 
+                  value={selectedTicket.id} 
+                  size={150}
+                  level="H"
+                  includeMargin={true}
+                />
+              </div>
+            </div>
+
+
+            
+            <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button 
+                onClick={() => downloadQROnly(selectedTicket)}
+                className="print-button"
+                style={{ 
+                  background: 'var(--primary-gradient)',
+                  minWidth: '200px',
+                  height: '45px',
+                  fontSize: '1rem',
+                  padding: '0 25px',
+                  borderRadius: '12px',
+                  fontWeight: '500'
+                }}
+              >
+                📱 Descargar QR
+              </button>
+              <button 
+                onClick={() => setSelectedTicket(null)}
+                className="nav-button"
+                style={{ 
+                  background: 'var(--secondary-gradient)',
+                  minWidth: '200px',
+                  height: '45px',
+                  fontSize: '1rem',
+                  padding: '0 25px',
+                  borderRadius: '12px',
+                  fontWeight: '500'
+                }}
+              >
+                ❌ Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmación para eliminar */}
+      {showDeleteConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1001,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'white',
+            padding: '30px',
+            borderRadius: '20px',
+            maxWidth: '400px',
+            width: '100%',
+            textAlign: 'center'
+          }}>
+            <h3 style={{ marginBottom: '20px', color: 'var(--text-primary)' }}>🗑️ Confirmar Eliminación</h3>
+            
+            <p style={{ marginBottom: '10px', color: 'var(--text-secondary)' }}>
+              ¿Estás seguro de que quieres eliminar este ticket?
+            </p>
+            <p style={{ marginBottom: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+              {showDeleteConfirm.buyer_name} - {showDeleteConfirm.event_name}
+            </p>
+            <p style={{ marginBottom: '30px', fontSize: '14px', color: 'var(--danger-gradient)', fontWeight: '600' }}>
+              ⚠️ Esta acción no se puede deshacer
+            </p>
+            
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button 
+                onClick={() => setShowDeleteConfirm(null)}
+                className="nav-button"
+                style={{ 
+                  background: 'var(--text-light)',
+                  flex: '1'
+                }}
+              >
+                ❌ Cancelar
+              </button>
+              <button 
+                onClick={() => deleteTicket(showDeleteConfirm.id)}
+                className="nav-button"
+                style={{ 
+                  background: 'var(--danger-gradient)',
+                  flex: '1'
+                }}
+              >
+                🗑️ Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default TicketList; 
