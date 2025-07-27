@@ -6,7 +6,7 @@ import html2canvas from 'html2canvas';
 
 
 const CreateTicket = () => {
-  const navigate = useNavigate();
+  
   const [formData, setFormData] = useState({
     buyer_name: '',
     buyer_email: '',
