@@ -6,8 +6,8 @@ import TicketList from './components/TicketList';
 import TicketScanner from './components/TicketScanner';
 import TicketViewer from './components/TicketViewer';
 
-// API base URL
-axios.defaults.baseURL = window.location.origin;
+// API base URL - use relative paths
+axios.defaults.baseURL = '';
 
 function Navigation() {
   const location = useLocation();
