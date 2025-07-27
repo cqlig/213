@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const QRCode = require('qrcode');
+const qrcode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
 const path = require('path');
@@ -12,210 +12,159 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Servir archivos estáticos del build de React
 app.use(express.static(path.join(__dirname, '../client/build')));
 
-// Database setup
+// Inicializar base de datos SQLite
 const db = new sqlite3.Database('./tickets.db', (err) => {
   if (err) {
-    console.error('Error opening database:', err);
+    console.error('Error conectando a la base de datos:', err.message);
   } else {
-    console.log('Connected to SQLite database');
-    createTables();
+    console.log('Conectado a la base de datos SQLite.');
   }
 });
 
-// Create tables
-function createTables() {
-  const createTicketsTable = `
-    CREATE TABLE IF NOT EXISTS tickets (
-      id TEXT PRIMARY KEY,
-      buyer_name TEXT NOT NULL,
-      buyer_email TEXT,
-      event_name TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      status TEXT DEFAULT 'Válido',
-      qr_code TEXT UNIQUE
-    )
-  `;
-  
-  db.run(createTicketsTable, (err) => {
-    if (err) {
-      console.error('Error creating table:', err);
-    } else {
-      console.log('Tickets table ready');
-    }
-  });
-}
+// Crear tabla si no existe
+db.run(`CREATE TABLE IF NOT EXISTS tickets (
+  id TEXT PRIMARY KEY,
+  buyer_name TEXT NOT NULL,
+  buyer_email TEXT,
+  event_name TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  status TEXT DEFAULT 'Válido',
+  qr_code TEXT
+)`);
 
-// Routes
-
-// Create new ticket
+// Rutas API
 app.post('/api/tickets', async (req, res) => {
   try {
     const { buyer_name, buyer_email, event_name } = req.body;
-    
+
     if (!buyer_name || !event_name) {
-      return res.status(400).json({ error: 'Nombre del comprador y nombre del evento son requeridos' });
+      return res.status(400).json({ error: 'Nombre del comprador y evento son requeridos' });
     }
 
-    const ticketId = uuidv4();
-    const qrCode = await QRCode.toDataURL(ticketId);
-    
-    const query = `
-      INSERT INTO tickets (id, buyer_name, buyer_email, event_name, qr_code)
-      VALUES (?, ?, ?, ?, ?)
-    `;
-    
-    db.run(query, [ticketId, buyer_name, buyer_email, event_name, qrCode], function(err) {
-      if (err) {
-        console.error('Error creating ticket:', err);
-        return res.status(500).json({ error: 'Error al crear el ticket' });
+    const id = uuidv4();
+    const qr_code = await qrcode.toDataURL(id);
+
+    db.run(
+      'INSERT INTO tickets (id, buyer_name, buyer_email, event_name, qr_code) VALUES (?, ?, ?, ?, ?)',
+      [id, buyer_name, buyer_email, event_name, qr_code],
+      function(err) {
+        if (err) {
+          console.error(err);
+          res.status(500).json({ error: 'Error creando el ticket' });
+        } else {
+          res.json({
+            id,
+            buyer_name,
+            buyer_email,
+            event_name,
+            status: 'Válido',
+            created_at: moment().format(),
+            qr_code
+          });
+        }
       }
-      
-      res.json({
-        id: ticketId,
-        buyer_name,
-        buyer_email,
-        event_name,
-        created_at: moment().format('YYYY-MM-DD HH:mm:ss'),
-        status: 'Válido',
-        qr_code: qrCode
-      });
-    });
+    );
   } catch (error) {
-    console.error('Error:', error);
+    console.error(error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
-// Get all tickets
 app.get('/api/tickets', (req, res) => {
-  const query = 'SELECT * FROM tickets ORDER BY created_at DESC';
-  
-  db.all(query, [], (err, rows) => {
+  db.all('SELECT * FROM tickets ORDER BY created_at DESC', (err, rows) => {
     if (err) {
-      console.error('Error fetching tickets:', err);
-      return res.status(500).json({ error: 'Error al obtener tickets' });
+      console.error(err);
+      res.status(500).json({ error: 'Error obteniendo tickets' });
+    } else {
+      res.json(rows);
     }
-    
-    res.json(rows);
   });
 });
 
-// Get ticket by ID
 app.get('/api/tickets/:id', (req, res) => {
   const { id } = req.params;
-  
-  const query = 'SELECT * FROM tickets WHERE id = ?';
-  
-  db.get(query, [id], (err, row) => {
+
+  db.get('SELECT * FROM tickets WHERE id = ?', [id], (err, row) => {
     if (err) {
-      console.error('Error fetching ticket:', err);
-      return res.status(500).json({ error: 'Error al obtener ticket' });
+      console.error(err);
+      res.status(500).json({ error: 'Error obteniendo ticket' });
+    } else if (!row) {
+      res.status(404).json({ error: 'Ticket no encontrado' });
+    } else {
+      res.json(row);
     }
-    
-    if (!row) {
-      return res.status(404).json({ error: 'Ticket no encontrado' });
-    }
-    
-    res.json(row);
   });
 });
 
-// Validate ticket (check if exists and is valid)
 app.post('/api/tickets/validate', (req, res) => {
   const { ticket_id } = req.body;
-  
+
   if (!ticket_id) {
     return res.status(400).json({ error: 'ID del ticket es requerido' });
   }
-  
-  const query = 'SELECT * FROM tickets WHERE id = ?';
-  
-  db.get(query, [ticket_id], (err, row) => {
+
+  db.get('SELECT * FROM tickets WHERE id = ?', [ticket_id], (err, row) => {
     if (err) {
-      console.error('Error validating ticket:', err);
-      return res.status(500).json({ error: 'Error al validar ticket' });
+      console.error(err);
+      res.status(500).json({ error: 'Error validando ticket' });
+    } else if (!row) {
+      res.json({ valid: false, message: 'Ticket no encontrado' });
+    } else if (row.status === 'Canjeado') {
+      res.json({ valid: false, message: 'Ticket ya fue canjeado', ticket: row });
+    } else {
+      res.json({ valid: true, message: 'Ticket válido', ticket: row });
     }
-    
-    if (!row) {
-      return res.json({
-        valid: false,
-        message: 'Ticket no encontrado'
-      });
-    }
-    
-    if (row.status === 'Canjeado') {
-      return res.json({
-        valid: false,
-        already_redeemed: true,
-        message: 'Ticket ya fue canjeado'
-      });
-    }
-    
-    res.json({
-      valid: true,
-      ticket: row,
-      message: 'Ticket válido'
-    });
   });
 });
 
-// Redeem ticket (mark as redeemed)
 app.post('/api/tickets/redeem', (req, res) => {
   const { ticket_id } = req.body;
-  
+
   if (!ticket_id) {
     return res.status(400).json({ error: 'ID del ticket es requerido' });
   }
-  
-  const query = 'UPDATE tickets SET status = ? WHERE id = ?';
-  
-  db.run(query, ['Canjeado', ticket_id], function(err) {
-    if (err) {
-      console.error('Error redeeming ticket:', err);
-      return res.status(500).json({ error: 'Error al canjear ticket' });
+
+  db.run(
+    'UPDATE tickets SET status = "Canjeado" WHERE id = ? AND status = "Válido"',
+    [ticket_id],
+    function(err) {
+      if (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error canjeando ticket' });
+      } else if (this.changes === 0) {
+        res.status(400).json({ error: 'Ticket no encontrado o ya fue canjeado' });
+      } else {
+        res.json({ message: 'Ticket canjeado exitosamente' });
+      }
     }
-    
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Ticket no encontrado' });
-    }
-    
-    res.json({
-      success: true,
-      message: '🎉 ¡Ticket canjeado exitosamente! ¡Que disfrute el evento!'
-    });
-  });
+  );
 });
 
-// Delete ticket
 app.delete('/api/tickets/:id', (req, res) => {
   const { id } = req.params;
-  
-  const query = 'DELETE FROM tickets WHERE id = ?';
-  
-  db.run(query, [id], function(err) {
+
+  db.run('DELETE FROM tickets WHERE id = ?', [id], function(err) {
     if (err) {
-      console.error('Error deleting ticket:', err);
-      return res.status(500).json({ error: 'Error al eliminar ticket' });
+      console.error(err);
+      res.status(500).json({ error: 'Error eliminando ticket' });
+    } else if (this.changes === 0) {
+      res.status(404).json({ error: 'Ticket no encontrado' });
+    } else {
+      res.json({ message: 'Ticket eliminado exitosamente' });
     }
-    
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Ticket no encontrado' });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Ticket eliminado exitosamente'
-    });
   });
 });
 
-// Serve React app
+// Servir React app para todas las rutas que no sean API
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/build/index.html'));
+  res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-}); 
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🎫 Servidor corriendo en puerto ${PORT}`);
+  console.log(`📱 Aplicación disponible en: http://localhost:${PORT}`);
+});
