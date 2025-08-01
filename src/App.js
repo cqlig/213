@@ -41,8 +41,8 @@ function App() {
     <Router>
       <div className="App">
         <header className="header">
-          <h1>🎫 Sistema de Gestión de Eventos</h1>
-          <p>Gestiona tus eventos y entradas de forma manual y eficiente</p>
+          <h1>🎫 La asunción de Figuras</h1>
+          <p>Sistema de gestión de entradas</p>
         </header>
         
         <div className="container">

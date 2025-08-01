@@ -10,7 +10,7 @@ const CreateTicket = () => {
   const [formData, setFormData] = useState({
     buyer_name: '',
     buyer_email: '',
-    event_name: ''
+    event_name: 'La asunción de Figuras'
   });
   const [loading, setLoading] = useState(false);
   const [ticket, setTicket] = useState(null);
@@ -157,9 +157,9 @@ const CreateTicket = () => {
               id="event_name"
               name="event_name"
               value={formData.event_name}
-              onChange={handleInputChange}
+              readOnly
               required
-              placeholder="Ej: Concierto de Rock, Conferencia Tech, etc."
+              style={{ backgroundColor: '#f0f0f0' }}
             />
           </div>
 
